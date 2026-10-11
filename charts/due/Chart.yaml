@@ -5,4 +5,4 @@ type: application
 version: 0.1.0
 # The commit of macroer16/uni-deadline-tracker-api that the images are built from.
 # Bumping this (in a normal commit) is how a new version gets released.
-appVersion: "0b6d85b44e0c"
+appVersion: "cba1f04492f0"
