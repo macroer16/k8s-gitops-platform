@@ -3,6 +3,9 @@ configs:
   params:
     # TLS ends at the Gateway, so ArgoCD serves plain HTTP inside the cluster.
     server.insecure: true
+    # Compare Git with the cluster using the API server's own dry-run, so fields that
+    # controllers fill in themselves (Kyverno, CRD defaults) don't show as drift.
+    controller.diff.server.side: true
   cm:
     # Lets sync waves wait until the previous wave's Applications are actually healthy.
     resource.customizations.health.argoproj.io_Application: |
@@ -17,6 +20,9 @@ configs:
       end
       return hs
     timeout.reconciliation: 60s
+    # Aggregated ClusterRoles get their rules filled in by Kubernetes; that isn't drift.
+    resource.compareoptions: |
+      ignoreAggregatedRoles: true
   repositories:
     envoy-oci:
       url: docker.io/envoyproxy

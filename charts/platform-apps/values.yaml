@@ -10,7 +10,7 @@ versions:
   envoyGateway: v1.9.2
   kyverno: 3.9.1
   kubePrometheusStack: 92.3.0
-  sealedSecrets: 2.18.6
+  sealedSecrets: 2.20.0
   metricsServer: 3.14.0
 
 gateway:

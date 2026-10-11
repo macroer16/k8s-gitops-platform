@@ -6,7 +6,7 @@ set -euo pipefail
 KUBECTL=v1.34.1
 HELM=v3.19.0
 K3D=v5.8.3
-KUBESEAL=0.32.2
+KUBESEAL=0.36.0
 BIN="${HOME}/.local/bin"
 mkdir -p "$BIN"
 cd "$(mktemp -d)"
@@ -24,7 +24,7 @@ curl -fsSLo k3d "https://github.com/k3d-io/k3d/releases/download/${K3D}/k3d-linu
 install k3d "$BIN/"
 
 echo "kubeseal ${KUBESEAL}"
-curl -fsSL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL}/kubeseal-${KUBESEAL}-linux-amd64.tar.gz" | tar xz kubeseal
+curl -fsSL "https://github.com/bitnami/sealed-secrets/releases/download/v${KUBESEAL}/kubeseal-${KUBESEAL}-linux-amd64.tar.gz" | tar xz kubeseal
 install kubeseal "$BIN/"
 
 echo "Done. Make sure ${BIN} is on your PATH."

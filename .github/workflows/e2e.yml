@@ -16,6 +16,10 @@ concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
