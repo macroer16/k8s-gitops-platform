@@ -67,7 +67,7 @@
    "id": 2,
    "type": "stat",
    "title": "Error rate",
-   "description": "",
+   "description": "Share of API responses that were server errors (5xx) over the last 5 minutes.",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -113,7 +113,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "sum(rate(http_requests_total{job=\"due-api\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total{job=\"due-api\"}[5m])), 0.001)",
+     "expr": "(sum(rate(http_requests_total{job=\"due-api\",status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"due-api\"}[5m])), 0.001)",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"

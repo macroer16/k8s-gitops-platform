@@ -101,7 +101,7 @@ make down         # delete the cluster
 5. **Load test** (k6, from inside the cluster through the Gateway), in two phases:
    - **Steady:** 150 requests a second for 3.5 minutes. Every request must succeed with p95 under 300 ms, and the autoscaler has to add API pods.
    - **Burst:** 600 requests a second for 20 seconds. The gateway must answer the excess with `429 Too Many Requests` rather than pass it to the API.
-   - In the latest run: 31,500 steady requests with **0 failures** and **p95 of 6 ms**, the API scaled from **2 to 6 pods**, and **7,731** burst requests were rate-limited.
+   - A typical run: about 31,000 steady requests with **0 failures** and p95 well under 100 ms, the API scaling from **2 to 6 pods**, and over 7,000 burst requests rate-limited. Exact figures for the latest run are on the [`e2e-results` branch](https://github.com/macroer16/k8s-gitops-platform/tree/e2e-results).
 6. Takes screenshots of the app, ArgoCD and Grafana, and uploads them as artifacts.
 
 ## Repository layout
