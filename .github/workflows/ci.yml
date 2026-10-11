@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - name: Helm lint
         run: helm lint charts/*
       - name: Render every chart with every cluster's values
@@ -45,7 +45,7 @@ jobs:
           metadata: { name: due, labels: { platform.macroer16/policies: enforced } }
           YAML
           ./kyverno apply policies.yaml --resource workloads.yaml --resource ns.yaml --cluster=false --audit-warn=false --remove-color
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rendered-manifests
           path: rendered/
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: aquasecurity/trivy-action@0.33.1
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: charts
