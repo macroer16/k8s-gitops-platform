@@ -6,6 +6,9 @@ kind: ClusterPolicy
 metadata:
   name: verify-image-signatures
   annotations:
+    # Check Pods only. If Kyverno also rewrote Deployments (tag -> digest), ArgoCD would
+    # see that as drift from Git and keep reverting it.
+    pod-policies.kyverno.io/autogen-controllers: none
     policies.kyverno.io/title: Only run images signed by this repository's CI
     policies.kyverno.io/description: >-
       Every image from our registry must have a keyless Cosign signature made by a

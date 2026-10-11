@@ -20,7 +20,7 @@ spec:
       filters:
         - type: URLRewrite
           urlRewrite:
-            path: { type: ReplacePrefixMatch, replacePrefixMatch: /auth/login }
+            path: { type: ReplaceFullPath, replaceFullPath: /auth/login }
       backendRefs:
         - { name: due-api, port: 8000 }
     - name: api
@@ -38,26 +38,40 @@ spec:
       backendRefs:
         - { name: due-web, port: 8080 }
 ---
+# Rate limits, attached to individual rules of the route by name (sectionName).
+# "Local" means each gateway replica counts on its own.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
-  name: due-rate-limits
+  name: due-login-rate-limit
 spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: due
+      sectionName: login
   rateLimit:
     type: Local
     local:
       rules:
-        - clientSelectors:
-            - path: { type: Exact, value: /api/auth/login }
-          limit:
+        - limit:
             requests: {{ .Values.rateLimit.loginsPerMinute }}
             unit: Minute
-        - clientSelectors:
-            - path: { type: PathPrefix, value: /api }
-          limit:
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: due-api-rate-limit
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: due
+      sectionName: api
+  rateLimit:
+    type: Local
+    local:
+      rules:
+        - limit:
             requests: {{ .Values.rateLimit.requestsPerSecond }}
             unit: Second
