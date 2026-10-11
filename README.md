@@ -8,7 +8,13 @@ A production-style Kubernetes platform that I built and run on my own laptop, ma
 
 Every push spins up a fresh 3-node cluster in GitHub Actions, installs the whole platform from scratch the same way I do locally, and tests it: the app works, unsafe workloads are refused, the database is isolated, and the API scales under load. It costs £0.
 
-<!-- screenshots -->
+These screenshots are taken automatically by the latest successful CI run on a brand-new cluster. The full test output is on the [`e2e-results` branch](https://github.com/macroer16/k8s-gitops-platform/tree/e2e-results).
+
+| ArgoCD: every component installed from Git, Synced and Healthy | The app's resources as ArgoCD sees them |
+|---|---|
+| ![ArgoCD applications, all Synced and Healthy](https://raw.githubusercontent.com/macroer16/k8s-gitops-platform/e2e-results/argocd-apps.png) | ![ArgoCD resource tree for the due app](https://raw.githubusercontent.com/macroer16/k8s-gitops-platform/e2e-results/argocd-due-tree.png) |
+| **The app running on the platform, over HTTPS through the Gateway** | **Grafana during the load test: traffic, latency and autoscaling** |
+| ![The Due web app](https://raw.githubusercontent.com/macroer16/k8s-gitops-platform/e2e-results/due-app.png) | ![Grafana dashboard for the API](https://raw.githubusercontent.com/macroer16/k8s-gitops-platform/e2e-results/grafana-due.png) |
 
 ## What's in it
 
