@@ -1,0 +1,6 @@
+rendered/
+screenshots/
+node_modules/
+*.tgz
+# The sealed-secrets private key must never be committed.
+*sealed-secrets-key*.yaml
