@@ -1,0 +1,67 @@
+name: Build, scan and sign images
+
+# Builds the app at the commit named in charts/due/Chart.yaml (appVersion), pushes it to
+# GitHub Container Registry, and signs it so the cluster will accept it.
+on:
+  push:
+    branches: [main]
+    paths: [charts/due/Chart.yaml, .github/workflows/images.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # push to ghcr.io
+  id-token: write   # keyless signing with Sigstore (no keys stored anywhere)
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { name: due-api, context: . }
+          - { name: due-web, context: web }
+    steps:
+      - uses: actions/checkout@v7
+      - name: Which app commit to build
+        id: app
+        run: echo "tag=$(yq .appVersion charts/due/Chart.yaml)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          repository: macroer16/uni-deadline-tracker-api
+          path: app
+          fetch-depth: 0
+      - run: git -C app checkout --detach "${{ steps.app.outputs.tag }}"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: app/${{ matrix.context }}
+          push: true
+          tags: ghcr.io/macroer16/${{ matrix.name }}:${{ steps.app.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.app.outputs.tag }}
+          provenance: false
+      - name: Scan for known vulnerabilities (fail on fixable critical ones)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ghcr.io/macroer16/${{ matrix.name }}@${{ steps.build.outputs.digest }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign (keyless, identity = this workflow)
+        run: cosign sign --yes "ghcr.io/macroer16/${{ matrix.name }}@${{ steps.build.outputs.digest }}"
+      - name: Generate an SBOM and attach it as a signed attestation
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b . v1.33.0
+          ./syft "ghcr.io/macroer16/${{ matrix.name }}@${{ steps.build.outputs.digest }}" -o spdx-json > sbom.spdx.json
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json \
+            "ghcr.io/macroer16/${{ matrix.name }}@${{ steps.build.outputs.digest }}"

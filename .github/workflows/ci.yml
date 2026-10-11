@@ -1,0 +1,70 @@
+name: Static checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  charts:
+    name: Lint, render and validate manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      - name: Helm lint
+        run: helm lint charts/*
+      - name: Render every chart with every cluster's values
+        run: |
+          mkdir -p rendered
+          helm template due charts/due > rendered/due.yaml
+          helm template platform-config charts/platform-config > rendered/platform-config.yaml
+          for c in local ci; do
+            helm template platform charts/platform-apps -f charts/platform-apps/values-$c.yaml > rendered/apps-$c.yaml
+          done
+      - name: Validate against Kubernetes and CRD schemas (kubeconform)
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          ./kubeconform -strict -summary -kubernetes-version 1.34.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered/*.yaml
+      - name: Our own chart must pass our own policies (Kyverno CLI)
+        run: |
+          curl -fsSL https://github.com/kyverno/kyverno/releases/download/v1.16.0/kyverno-cli_v1.16.0_linux_x86_64.tar.gz | tar xz kyverno
+          # Signature checks need a real registry, so they are tested in the e2e workflow instead.
+          yq 'select(.kind == "ClusterPolicy" and .metadata.name != "verify-image-signatures")' rendered/platform-config.yaml > policies.yaml
+          # The rendered chart lives in the "due" namespace, which has the policy label.
+          yq 'select(.kind == "Deployment" or .kind == "StatefulSet") | .metadata.namespace = "due"' rendered/due.yaml > workloads.yaml
+          cat > ns.yaml <<'YAML'
+          apiVersion: v1
+          kind: Namespace
+          metadata: { name: due, labels: { platform.macroer16/policies: enforced } }
+          YAML
+          ./kyverno apply policies.yaml --resource workloads.yaml --resource ns.yaml --cluster=false --audit-warn=false --remove-color
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifests
+          path: rendered/
+
+  security:
+    name: Misconfiguration scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: charts
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  scripts:
+    name: Shell scripts (ShellCheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: shellcheck --severity=warning scripts/*.sh tests/*.sh

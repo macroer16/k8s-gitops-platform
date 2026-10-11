@@ -1,0 +1,131 @@
+name: End-to-end (real cluster)
+
+# Builds a throwaway Kubernetes cluster, installs the whole platform through ArgoCD exactly
+# as on a laptop, then tests it: app, security policies, network policies, autoscaling.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # keyless signing of the test images
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install tools (the same script you run locally)
+        run: |
+          scripts/install-tools.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Get the app at the version this platform pins
+        id: app
+        run: |
+          TAG=$(yq .appVersion charts/due/Chart.yaml)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          git clone -q https://github.com/macroer16/uni-deadline-tracker-api app
+          git -C app checkout -q --detach "$TAG"
+
+      - name: Start a local image registry
+        run: docker run -d --restart=always -p 127.0.0.1:5001:5000 --name kind-registry registry:2
+
+      - name: Create the cluster (kind, 3 nodes)
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: platform
+          config: cluster/kind.yaml
+          wait: 120s
+
+      - name: Connect the registry to the cluster
+        run: |
+          docker network connect kind kind-registry
+          for node in $(kind get nodes --name platform); do
+            docker exec "$node" mkdir -p /etc/containerd/certs.d/kind-registry:5000
+            printf '[host."http://kind-registry:5000"]\n' | docker exec -i "$node" cp /dev/stdin /etc/containerd/certs.d/kind-registry:5000/hosts.toml
+          done
+
+      - name: Build, push and sign the images
+        run: |
+          TAG=${{ steps.app.outputs.tag }}
+          docker build -q -t localhost:5001/due-api:$TAG app
+          docker build -q -t localhost:5001/due-web:$TAG app/web
+          for img in due-api due-web; do
+            docker push -q localhost:5001/$img:$TAG
+            digest=$(docker inspect --format '{{index .RepoDigests 0}}' localhost:5001/$img:$TAG)
+            cosign sign --yes --allow-http-registry "$digest"
+          done
+          # A deliberately unsigned image, to prove the cluster refuses it.
+          docker tag localhost:5001/due-web:$TAG localhost:5001/due-unsigned:1
+          docker push -q localhost:5001/due-unsigned:1
+
+      - name: Install ArgoCD and hand the cluster to it
+        run: scripts/bootstrap.sh ci "$REVISION"
+
+      - name: Wait for every application to be synced and healthy
+        run: scripts/wait-healthy.sh 1800
+
+      - name: Expose the gateway on localhost:8443
+        run: |
+          SVC=$(kubectl -n envoy-gateway-system get svc -l gateway.envoyproxy.io/owning-gateway-name=main -o jsonpath='{.items[0].metadata.name}')
+          nohup kubectl -n envoy-gateway-system port-forward "svc/$SVC" 8443:443 > /tmp/pf.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sk -o /dev/null https://due.localhost:8443/ && break; sleep 2; done
+
+      - name: Smoke tests
+        run: tests/smoke.sh https://due.localhost:8443
+
+      - name: Security policy tests
+        run: tests/policy-tests.sh kind-registry:5000 kind-registry:5000/due-unsigned:1
+
+      - name: Load test and autoscaling
+        run: tests/loadtest.sh
+
+      - name: Screenshots
+        if: always()
+        run: |
+          npm i -s --no-save playwright@1.56.0 && npx playwright install --with-deps chromium > /dev/null
+          node tests/screenshots.mjs \
+            "$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)" \
+            "$(kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d)"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Platform e2e"
+            echo '```'
+            kubectl -n argocd get applications 2>&1
+            echo
+            kubectl -n due get deploy,sts,hpa 2>&1
+            echo
+            kubectl get clusterpolicies 2>&1
+            echo '```'
+            echo "Peak API pods during load test: $(cat /tmp/peak-replicas 2>/dev/null || echo n/a)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl get events -A --sort-by=.lastTimestamp | tail -60
+          kubectl -n argocd get applications -o yaml | yq '.items[] | {"app": .metadata.name, "sync": .status.sync.status, "health": .status.health, "conditions": .status.conditions, "op": .status.operationState.message}'
+          kubectl get policyreports -A 2>/dev/null | head -30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: ignore
