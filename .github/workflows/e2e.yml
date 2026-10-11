@@ -72,10 +72,10 @@ jobs:
           docker push -q localhost:5001/due-unsigned:1
 
       - name: Install ArgoCD and hand the cluster to it
-        run: scripts/bootstrap.sh ci "$REVISION"
+        run: scripts/bootstrap.sh ci "$REVISION" 2>&1 | tee /tmp/step-bootstrap.log
 
       - name: Wait for every application to be synced and healthy
-        run: scripts/wait-healthy.sh 1800
+        run: scripts/wait-healthy.sh 1800 2>&1 | tee /tmp/step-wait.log
 
       - name: Expose the gateway on localhost:8443
         run: |
@@ -84,13 +84,13 @@ jobs:
           for _ in $(seq 1 30); do curl -sk -o /dev/null https://due.localhost:8443/ && break; sleep 2; done
 
       - name: Smoke tests
-        run: tests/smoke.sh https://due.localhost:8443
+        run: tests/smoke.sh https://due.localhost:8443 2>&1 | tee /tmp/step-smoke.log
 
       - name: Security policy tests
-        run: tests/policy-tests.sh kind-registry:5000 kind-registry:5000/due-unsigned:1
+        run: tests/policy-tests.sh kind-registry:5000 kind-registry:5000/due-unsigned:1 2>&1 | tee /tmp/step-policy.log
 
       - name: Load test and autoscaling
-        run: tests/loadtest.sh
+        run: tests/loadtest.sh 2>&1 | tee /tmp/step-loadtest.log
 
       - name: Screenshots
         if: always()
@@ -124,6 +124,7 @@ jobs:
           annotate "Warning events" sh -c "kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp -o custom-columns='NS:.metadata.namespace,OBJ:.involvedObject.name,REASON:.reason,MSG:.message' | tail -25"
           annotate "Due namespace" sh -c "kubectl -n due get all,sealedsecrets,secrets 2>&1; kubectl -n due describe pods 2>&1 | grep -A6 -E 'State:|Events:' | tail -40"
           annotate "Gateway" sh -c "kubectl get gateway,httproute -A 2>&1; kubectl -n gateway get certificate 2>&1"
+          for f in /tmp/step-*.log; do [ -f "$f" ] && annotate "Output of $(basename "$f" .log)" tail -40 "$f"; done
           kubectl get pods -A -o wide
           kubectl get events -A --sort-by=.lastTimestamp | tail -60
 
