@@ -1,0 +1,148 @@
+# Kyverno admission policies for application namespaces (label platform.macroer16/policies=enforced).
+# Pod Security Admission ("restricted") already blocks root, privilege escalation and
+# extra capabilities; these add supply-chain and operational rules on top.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+  annotations:
+    policies.kyverno.io/title: Only run images signed by this repository's CI
+    policies.kyverno.io/description: >-
+      Every image from our registry must have a keyless Cosign signature made by a
+      GitHub Actions workflow in macroer16/k8s-gitops-platform. Tags are swapped for
+      digests so the image can't change after it was checked.
+spec:
+  webhookTimeoutSeconds: 30
+  background: false
+  rules:
+    - name: check-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              {{- include "platform.appNamespaces" . | nindent 14 }}
+      verifyImages:
+        - imageReferences:
+            {{- toYaml .Values.signedImages | nindent 12 }}
+          failureAction: Enforce
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: {{ .Values.signer.issuer | quote }}
+                    subjectRegExp: {{ .Values.signer.subjectRegExp | quote }}
+                    rekor:
+                      url: https://rekor.sigstore.dev
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Only pull images from approved registries
+spec:
+  background: true
+  rules:
+    - name: approved-registries
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              {{- include "platform.appNamespaces" . | nindent 14 }}
+      validate:
+        failureAction: Enforce
+        message: "Images must come from an approved registry: {{ join ", " .Values.allowedRegistries }}"
+        foreach:
+          - list: "request.object.spec.[initContainers, containers, ephemeralContainers][]"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ "{{" }} element.image {{ "}}" }}"
+                    operator: AnyNotIn
+                    value:
+                      {{- toYaml .Values.allowedRegistries | nindent 22 }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Images must use a fixed version, not "latest"
+spec:
+  background: true
+  rules:
+    - name: require-tag-or-digest
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              {{- include "platform.appNamespaces" . | nindent 14 }}
+      validate:
+        failureAction: Enforce
+        message: "Use a version tag or a digest. ':latest' (or no tag) means you can't tell what is running."
+        foreach:
+          - list: "request.object.spec.[initContainers, containers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.image {{ "}}" }}"
+                    operator: Equals
+                    value: "*:latest"
+                  - key: "{{ "{{" }} contains(element.image, ':') || contains(element.image, '@') {{ "}}" }}"
+                    operator: Equals
+                    value: false
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-requests-and-limits
+  annotations:
+    policies.kyverno.io/title: Containers must declare CPU and memory requests and a memory limit
+spec:
+  background: true
+  rules:
+    - name: resources
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              {{- include "platform.appNamespaces" . | nindent 14 }}
+      validate:
+        failureAction: Enforce
+        message: "Set CPU and memory requests and a memory limit, so one app can't starve the others."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-health-probes
+  annotations:
+    policies.kyverno.io/title: Long-running containers must have a readiness probe
+spec:
+  background: true
+  rules:
+    - name: readiness-probe
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet]
+              {{- include "platform.appNamespaces" . | nindent 14 }}
+      validate:
+        failureAction: Enforce
+        message: "Add a readinessProbe so traffic only reaches containers that are ready."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - readinessProbe: {}

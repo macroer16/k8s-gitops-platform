@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform-config
+description: Cluster-wide settings - the Gateway, TLS certificates, Kyverno security policies and routes to the platform tools
+type: application
+version: 0.1.0

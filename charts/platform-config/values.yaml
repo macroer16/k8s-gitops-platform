@@ -1,0 +1,17 @@
+domain: localhost
+
+gateway:
+  # LoadBalancer works with k3d. The CI cluster (kind) has no load balancer, so it uses ClusterIP.
+  serviceType: LoadBalancer
+
+# Images in the "due" namespace must come from these registries.
+allowedRegistries:
+  - "ghcr.io/macroer16/*"
+  - "docker.io/library/postgres:*"
+
+# Images that must carry a valid signature from this repository's GitHub Actions.
+signedImages:
+  - "ghcr.io/macroer16/*"
+signer:
+  issuer: https://token.actions.githubusercontent.com
+  subjectRegExp: "^https://github.com/macroer16/k8s-gitops-platform/\\.github/workflows/.+@refs/.+$"
