@@ -7,7 +7,8 @@ const [argocdPassword, grafanaPassword] = process.argv.slice(2);
 const out = "screenshots";
 mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } });
+// Set the language explicitly: the CI machine reports "en-US@posix", which Grafana can't parse.
+const ctx = await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-GB", timezoneId: "Europe/London", viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
 // Record anything that fails to load, so a broken screenshot explains itself.
 const problems = [];

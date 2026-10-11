@@ -28,7 +28,8 @@ spec:
       volumes: [{ name: script, configMap: { name: k6-script } }]
 YAML
 
-echo "API pods while the load test runs (autoscaler: min 2, max 6):"
+start=$(kubectl -n due get hpa due-api -o jsonpath='{.status.currentReplicas}')
+echo "API pods while the load test runs (autoscaler: min 2, max 6). Starting with ${start}:"
 max=0
 for _ in $(seq 1 36); do
   n=$(kubectl -n due get hpa due-api -o jsonpath='{.status.currentReplicas}')
@@ -40,6 +41,6 @@ for _ in $(seq 1 36); do
 done
 kubectl -n $NS wait --for=condition=complete job/k6 --timeout=6m || true
 kubectl -n $NS logs job/k6 | tail -40
-echo "Peak API pods: ${max}"
+echo "API pods: started at ${start}, peaked at ${max}"
 echo "$max" > /tmp/peak-replicas
 kubectl -n $NS get job k6 -o jsonpath='{.status.succeeded}' | grep -q 1
