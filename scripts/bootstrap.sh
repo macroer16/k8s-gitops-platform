@@ -26,7 +26,14 @@ echo "==> Handing over to ArgoCD (revision ${REVISION}, values-${CLUSTER}.yaml)"
 sed -e "s/\${CLUSTER}/${CLUSTER}/g" -e "s/\${REVISION}/${REVISION}/g" cluster/root-app.yaml | kubectl apply -f -
 
 echo "==> Waiting for the sealed-secrets controller"
-until kubectl -n kube-system get deploy sealed-secrets-controller >/dev/null 2>&1; do sleep 5; done
-kubectl -n kube-system rollout status deploy/sealed-secrets-controller --timeout=10m
+for _ in $(seq 1 120); do
+  kubectl -n kube-system get deploy sealed-secrets-controller >/dev/null 2>&1 && break
+  sleep 5
+done
+if ! kubectl -n kube-system rollout status deploy/sealed-secrets-controller --timeout=10m; then
+  echo "sealed-secrets controller did not start. ArgoCD applications:"
+  kubectl -n argocd get applications -o wide || true
+  exit 1
+fi
 
 scripts/make-secrets.sh "$CLUSTER"
