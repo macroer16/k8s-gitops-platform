@@ -118,10 +118,14 @@ jobs:
       - name: Diagnostics
         if: failure()
         run: |
+          annotate() { local t="$1"; shift; local m; m=$("$@" 2>&1 | tail -45 | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g'); echo "::error title=${t}::${m}"; }
+          annotate "ArgoCD applications" kubectl -n argocd get applications -o custom-columns='APP:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,MESSAGE:.status.conditions[*].message,OP:.status.operationState.message'
+          annotate "Pods not running" sh -c "kubectl get pods -A --no-headers | grep -vE 'Running|Completed' || echo all-running"
+          annotate "Warning events" sh -c "kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp -o custom-columns='NS:.metadata.namespace,OBJ:.involvedObject.name,REASON:.reason,MSG:.message' | tail -25"
+          annotate "Due namespace" sh -c "kubectl -n due get all,sealedsecrets,secrets 2>&1; kubectl -n due describe pods 2>&1 | grep -A6 -E 'State:|Events:' | tail -40"
+          annotate "Gateway" sh -c "kubectl get gateway,httproute -A 2>&1; kubectl -n gateway get certificate 2>&1"
           kubectl get pods -A -o wide
           kubectl get events -A --sort-by=.lastTimestamp | tail -60
-          kubectl -n argocd get applications -o yaml | yq '.items[] | {"app": .metadata.name, "sync": .status.sync.status, "health": .status.health, "conditions": .status.conditions, "op": .status.operationState.message}'
-          kubectl get policyreports -A 2>/dev/null | head -30
 
       - uses: actions/upload-artifact@v4
         if: always()
