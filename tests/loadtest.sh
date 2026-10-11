@@ -30,7 +30,7 @@ YAML
 
 echo "API pods while the load test runs (autoscaler: min 2, max 6):"
 max=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 36); do
   n=$(kubectl -n due get hpa due-api -o jsonpath='{.status.currentReplicas}')
   cpu=$(kubectl -n due get hpa due-api -o jsonpath='{.status.currentMetrics[0].resource.current.averageUtilization}')
   echo "  $(date +%T)  pods=${n}  cpu=${cpu:-?}% of request"

@@ -1,7 +1,7 @@
 // Takes screenshots of the running platform for the README: the app, ArgoCD and Grafana.
 // Used by the e2e workflow; the gateway is port-forwarded to localhost:8443.
 import { chromium } from "playwright";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 
 const [argocdPassword, grafanaPassword] = process.argv.slice(2);
 const out = "screenshots";
@@ -9,6 +9,11 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
+// Record anything that fails to load, so a broken screenshot explains itself.
+const problems = [];
+page.on("requestfailed", (r) => problems.push(`failed ${r.url()} ${r.failure()?.errorText}`));
+page.on("response", (r) => { if (r.status() >= 400) problems.push(`${r.status()} ${r.url()}`); });
+page.on("console", (m) => { if (m.type() === "error") problems.push(`console: ${m.text().slice(0, 300)}`); });
 
 async function step(name, fn) {
   try { await fn(); console.log(`saved ${name}`); }
@@ -49,7 +54,8 @@ await step("argocd", async () => {
 });
 
 await step("grafana", async () => {
-  await page.goto("https://grafana.localhost:8443/login");
+  problems.length = 0;
+  await page.goto("https://grafana.localhost:8443/login", { waitUntil: "networkidle" });
   await page.fill("input[name=user]", "admin");
   await page.fill("input[name=password]", grafanaPassword);
   await page.click("button[type=submit]");
@@ -59,4 +65,5 @@ await step("grafana", async () => {
   await page.screenshot({ path: `${out}/grafana-due.png` });
 });
 
+writeFileSync(`${out}/page-problems.txt`, problems.slice(0, 80).join("\n"));
 await browser.close();
