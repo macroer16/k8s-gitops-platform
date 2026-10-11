@@ -1,0 +1,21 @@
+# Local cluster: 1 control-plane node and 2 workers in Docker.
+# Ports 80 and 443 on your machine go to the Gateway.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: platform
+servers: 1
+agents: 2
+ports:
+  - port: 80:80
+    nodeFilters: [loadbalancer]
+  - port: 443:443
+    nodeFilters: [loadbalancer]
+options:
+  k3s:
+    extraArgs:
+      # k3s ships its own ingress (Traefik) and metrics-server; ArgoCD installs ours instead.
+      - arg: --disable=traefik
+        nodeFilters: ["server:*"]
+      - arg: --disable=metrics-server
+        nodeFilters: ["server:*"]

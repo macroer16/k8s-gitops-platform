@@ -1,0 +1,2 @@
+# Your laptop (k3d). Images come from GitHub Container Registry.
+secretsPath: secrets/local

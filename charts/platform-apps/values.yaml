@@ -1,0 +1,38 @@
+# Which Git repository and revision ArgoCD reads everything from.
+# CI points this at the commit being tested.
+repoURL: https://github.com/macroer16/k8s-gitops-platform.git
+revision: main
+domain: localhost
+
+# Pinned versions of every third-party component (Helm chart versions).
+versions:
+  certManager: v1.21.2
+  envoyGateway: v1.9.2
+  kyverno: 3.9.1
+  kubePrometheusStack: 92.3.0
+  sealedSecrets: 2.18.6
+  metricsServer: 3.14.0
+
+gateway:
+  serviceType: LoadBalancer
+
+due:
+  imageRegistry: ghcr.io/macroer16
+  imageTag: ""
+
+policies:
+  allowedRegistries:
+    - "ghcr.io/macroer16/*"
+    - "docker.io/library/postgres:*"
+  signedImages:
+    - "ghcr.io/macroer16/*"
+  # Only the CI cluster uses a plain-HTTP registry.
+  allowInsecureRegistry: false
+
+monitoring:
+  prometheusRetention: 3d
+  # Defaults to https://grafana.<domain>
+  grafanaRootUrl: ""
+
+# Folder of committed SealedSecrets for this cluster ("" = secrets are applied by the bootstrap script only).
+secretsPath: ""

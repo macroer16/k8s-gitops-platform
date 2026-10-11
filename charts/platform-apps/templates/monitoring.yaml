@@ -1,0 +1,48 @@
+# Wave -2: Prometheus, Alertmanager, Grafana and kube-state-metrics.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations: { argocd.argoproj.io/sync-wave: "-2" }
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: {{ .Values.versions.kubePrometheusStack }}
+    helm:
+      valuesObject:
+        # These control-plane parts aren't reachable on k3d or kind, so their alerts would be noise.
+        kubeEtcd: { enabled: false }
+        kubeControllerManager: { enabled: false }
+        kubeScheduler: { enabled: false }
+        kubeProxy: { enabled: false }
+        prometheus:
+          prometheusSpec:
+            retention: {{ .Values.monitoring.prometheusRetention }}
+            # Pick up ServiceMonitors and rules from every namespace, not just this chart's.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            resources:
+              requests: { cpu: 100m, memory: 400Mi }
+              limits: { memory: 1Gi }
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests: { cpu: 10m, memory: 32Mi }
+              limits: { memory: 128Mi }
+        grafana:
+          admin:
+            existingSecret: grafana-admin
+            userKey: admin-user
+            passwordKey: admin-password
+          grafana.ini:
+            server:
+              root_url: {{ .Values.monitoring.grafanaRootUrl | default (printf "https://grafana.%s" .Values.domain) }}
+          sidecar:
+            dashboards:
+              searchNamespace: ALL
+  destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+  {{- include "apps.syncPolicy" . | nindent 2 }}

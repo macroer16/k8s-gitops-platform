@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform-apps
+description: App of apps - the ArgoCD Applications that make up the whole platform
+type: application
+version: 0.1.0

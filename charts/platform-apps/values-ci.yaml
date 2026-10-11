@@ -1,0 +1,17 @@
+# Throwaway cluster in GitHub Actions (kind). Images are built in the same run, pushed to
+# a local registry, signed with Cosign, and must still pass every policy.
+gateway:
+  serviceType: ClusterIP
+due:
+  imageRegistry: kind-registry:5000
+policies:
+  allowedRegistries:
+    - "kind-registry:5000/*"
+    - "docker.io/library/postgres:*"
+  signedImages:
+    - "kind-registry:5000/*"
+  allowInsecureRegistry: true
+monitoring:
+  prometheusRetention: 1d
+  # CI reaches the gateway through a port-forward on 8443.
+  grafanaRootUrl: https://grafana.localhost:8443

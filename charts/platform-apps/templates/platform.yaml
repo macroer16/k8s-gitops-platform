@@ -1,0 +1,59 @@
+# Wave -1: this repository's own cluster configuration (gateway, TLS, policies, routes).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-config
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations: { argocd.argoproj.io/sync-wave: "-1" }
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.revision }}
+    path: charts/platform-config
+    helm:
+      valuesObject:
+        domain: {{ .Values.domain }}
+        gateway:
+          serviceType: {{ .Values.gateway.serviceType }}
+        allowedRegistries:
+          {{- toYaml .Values.policies.allowedRegistries | nindent 10 }}
+        signedImages:
+          {{- toYaml .Values.policies.signedImages | nindent 10 }}
+  destination: { server: https://kubernetes.default.svc, namespace: gateway }
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+---
+# Wave 0: the application itself.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: due
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations: { argocd.argoproj.io/sync-wave: "0" }
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.revision }}
+    path: charts/due
+    helm:
+      valuesObject:
+        host: due.{{ .Values.domain }}
+        images:
+          registry: {{ .Values.due.imageRegistry }}
+          tag: {{ .Values.due.imageTag | quote }}
+  destination: { server: https://kubernetes.default.svc, namespace: due }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    retry:
+      limit: 10
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    # Labels for the namespace ArgoCD creates: Pod Security "restricted" plus our Kyverno policies.
+    managedNamespaceMetadata:
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        platform.macroer16/policies: enforced

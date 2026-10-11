@@ -1,0 +1,12 @@
+# CI cluster: 1 control-plane node and 2 workers. Nodes read registry settings from
+# /etc/containerd/certs.d so they can pull from the plain-HTTP registry "kind-registry:5000".
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

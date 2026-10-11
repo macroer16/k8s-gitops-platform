@@ -1,0 +1,29 @@
+# Helm values for ArgoCD itself (chart argo/argo-cd).
+configs:
+  params:
+    # TLS ends at the Gateway, so ArgoCD serves plain HTTP inside the cluster.
+    server.insecure: true
+  cm:
+    # Lets sync waves wait until the previous wave's Applications are actually healthy.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs
+    timeout.reconciliation: 60s
+  repositories:
+    envoy-oci:
+      url: docker.io/envoyproxy
+      name: envoyproxy
+      type: helm
+      enableOCI: "true"
+dex:
+  enabled: false
+notifications:
+  enabled: false
