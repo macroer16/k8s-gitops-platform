@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # publish screenshots and results to the e2e-results branch
   id-token: write   # keyless signing of the test images
 
 concurrency:
@@ -118,6 +118,37 @@ jobs:
             echo '```'
             echo "Peak API pods during load test: $(cat /tmp/peak-replicas 2>/dev/null || echo n/a)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record results
+        if: always()
+        run: |
+          mkdir -p results
+          cp screenshots/*.png results/ 2>/dev/null || true
+          {
+            echo "# Latest end-to-end run"
+            echo
+            echo "Commit \`${REVISION:0:12}\`, run [${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}), $(date -u '+%Y-%m-%d %H:%M UTC')."
+            for step in smoke policy loadtest; do
+              [ -f /tmp/step-$step.log ] || continue
+              echo; echo "## ${step}"; echo; echo '```'; sed 's/\x1b\[[0-9;]*m//g' /tmp/step-$step.log | tail -60; echo '```'
+            done
+            echo; echo "## Applications"; echo; echo '```'; kubectl -n argocd get applications 2>&1; echo '```'
+          } > results/README.md
+          for step in smoke policy loadtest; do
+            [ -f /tmp/step-$step.log ] && echo "::notice title=${step}::$(tail -45 /tmp/step-$step.log | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
+          done
+          true
+
+      - name: Publish results to the e2e-results branch
+        if: success() && github.ref == 'refs/heads/main'
+        run: |
+          cd results
+          git init -q -b e2e-results
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Results of run ${GITHUB_RUN_ID}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" e2e-results
 
       - name: Diagnostics
         if: failure()
