@@ -1,0 +1,77 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: due-api
+  labels:
+    {{- include "due.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: due-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: due-alerts
+  labels:
+    {{- include "due.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: due.rules
+      rules:
+        - alert: DueApiDown
+          expr: sum(up{job="due-api"}) == 0 or absent(up{job="due-api"})
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: No API pods are being scraped
+            description: Prometheus can't reach any due-api pod. Check `kubectl -n due get pods`.
+        - alert: DueApiHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="due-api",status=~"5.."}[5m]))
+              / clamp_min(sum(rate(http_requests_total{job="due-api"}[5m])), 0.001) > 0.05
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: More than 5% of API requests are failing
+        - alert: DueApiSlow
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="due-api"}[5m]))) > 0.5
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: 95th percentile API latency is above 500 ms
+        # A security signal, not just a reliability one: lots of failed logins
+        # usually means someone is guessing passwords.
+        - alert: DueLoginFailuresSpike
+          expr: sum(rate(deadline_login_failures_total{job="due-api"}[5m])) > 0.5
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: Unusually many failed logins (possible password guessing)
+        - alert: DueApiAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="due-api"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="due-api"}
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: The API has been at its maximum number of pods for 15 minutes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: due-dashboard
+  labels:
+    {{- include "due.labels" . | nindent 4 }}
+    # The Grafana sidecar loads any ConfigMap with this label as a dashboard.
+    grafana_dashboard: "1"
+data:
+  due.json: |-
+{{ .Files.Get "dashboards/due.json" | indent 4 }}
+{{- end }}

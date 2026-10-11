@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: due-web
+  labels:
+    {{- include "due.labels" . | nindent 4 }}
+    app.kubernetes.io/name: due-web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: due-web
+  template:
+    metadata:
+      labels:
+        {{- include "due.labels" . | nindent 8 }}
+        app.kubernetes.io/name: due-web
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: "{{ .Values.images.registry }}/due-web:{{ include "due.tag" . }}"
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: API_UPSTREAM
+              value: http://due-api:8000
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          securityContext:
+            {{- include "due.containerSecurity" . | nindent 12 }}
+          # The root filesystem is read-only, so nginx gets small writable folders for
+          # its cache, its pid file and the config it renders from the template at start-up.
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 16Mi } }
+        - { name: cache, emptyDir: { sizeLimit: 64Mi } }
+        - { name: conf, emptyDir: { sizeLimit: 1Mi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: due-web
+  labels:
+    {{- include "due.labels" . | nindent 4 }}
+    app.kubernetes.io/name: due-web
+spec:
+  selector:
+    app.kubernetes.io/name: due-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: due-web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: due-web

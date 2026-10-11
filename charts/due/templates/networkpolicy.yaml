@@ -1,0 +1,63 @@
+# Default deny: nothing can talk to anything in this namespace unless allowed below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# The database only accepts connections from the API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-api-only
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: due-postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: due-api
+      ports:
+        - { port: 5432, protocol: TCP }
+---
+# The API accepts traffic from the gateway, the web pods and Prometheus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: due-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: envoy-gateway-system }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: monitoring }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: due-web }
+      ports:
+        - { port: 8000, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: due-web
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: envoy-gateway-system }
+      ports:
+        - { port: 8080, protocol: TCP }

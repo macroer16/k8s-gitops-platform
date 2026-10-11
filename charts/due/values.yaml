@@ -1,0 +1,48 @@
+host: due.localhost
+
+gateway:
+  name: main
+  namespace: gateway
+
+images:
+  registry: ghcr.io/macroer16
+  # Empty means "use the chart's appVersion".
+  tag: ""
+  pullPolicy: IfNotPresent
+
+api:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+web:
+  replicas: 2
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 64Mi }
+
+postgres:
+  image: docker.io/library/postgres:17-alpine
+  storage: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# Name of the Secret holding DATABASE_PASSWORD and JWT_SECRET. It is created from a
+# SealedSecret (see scripts/make-secrets.sh), never stored in plain text in Git.
+secretName: due-secrets
+
+rateLimit:
+  # Applies to the whole API, per gateway replica.
+  requestsPerSecond: 200
+  # Logins are slow on purpose (Argon2), so they get a much lower limit to blunt password guessing.
+  loginsPerMinute: 30
+
+monitoring:
+  enabled: true
